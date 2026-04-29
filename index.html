@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>RPG Penjaga Kota</title>
+<style>
+body { background:black; color:white; text-align:center; font-family:monospace; }
+canvas { border:3px solid white; display:none; }
+#battleUI { display:none; }
+#gameUI { display:none; }
+button { padding:10px; margin:5px; }
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu">
+<h1>🏙️ Penjaga Kota</h1>
+<button onclick="startGame()">▶️ Start Game</button><br>
+<button onclick="continueGame()">💾 Continue</button><br>
+<button onclick="resetGame()">🗑️ Reset</button>
+</div>
+
+<!-- GAME -->
+<div id="gameUI">
+<div>
+❤️ <span id="hp">100</span> |
+⭐ <span id="lv">1</span> |
+🧪 <span id="pot">2</span>
+</div>
+
+<canvas id="game" width="320" height="320"></canvas>
+
+<div>
+<button onclick="move(0,-1)">⬆️</button><br>
+<button onclick="move(-1,0)">⬅️</button>
+<button onclick="move(1,0)">➡️</button><br>
+<button onclick="move(0,1)">⬇️</button>
+</div>
+</div>
+
+<!-- BATTLE -->
+<div id="battleUI">
+<h3 id="mName"></h3>
+<div>HP: <span id="mHP"></span></div>
+<div id="q"></div>
+<input id="ans">
+<br>
+<button onclick="attack()">⚔️</button>
+<button onclick="heal()">💚</button>
+<button onclick="usePotion()">🧪</button>
+<div id="log"></div>
+</div>
+
+<script>
+// ===== AUDIO FIX (tidak auto play biar ga error di HP) =====
+let audioStarted = false;
+function startAudio(){
+ if(audioStarted) return;
+ audioStarted = true;
+
+ let ctxAudio = new (window.AudioContext || window.webkitAudioContext)();
+ let osc = ctxAudio.createOscillator();
+ let gain = ctxAudio.createGain();
+
+ osc.type="square";
+ osc.frequency.value=220;
+ gain.gain.value=0.05;
+
+ osc.connect(gain);
+ gain.connect(ctxAudio.destination);
+ osc.start();
+
+ setInterval(()=>{
+  osc.frequency.value=200+Math.random()*200;
+ },1000);
+}
+
+// ===== VAR =====
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+
+let size = 32;
+let p, m;
+let battle = false;
+let correct = "";
+
+// MAP
+let map = Array(20).fill().map(()=>Array(20).fill(0));
+for(let i=0;i<20;i++){
+ map[0][i]=1; map[19][i]=1;
+ map[i][0]=1; map[i][19]=1;
+}
+
+// ===== MENU =====
+function startGame(){
+ startAudio();
+
+ p = {x:5,y:5,hp:100,lv:1,exp:0,potion:2};
+ m = {x:10,y:10,lv:1,hp:20};
+
+ document.getElementById("menu").style.display="none";
+ document.getElementById("gameUI").style.display="block";
+ c.style.display="block";
+
+ draw();
+}
+
+function continueGame(){
+ startAudio();
+
+ let data = localStorage.getItem("rpgSave");
+ if(data){
+  let d = JSON.parse(data);
+  p = d.p;
+  m = d.m;
+
+  document.getElementById("menu").style.display="none";
+  document.getElementById("gameUI").style.display="block";
+  c.style.display="block";
+
+  draw();
+ } else {
+  alert("Belum ada save!");
+ }
+}
+
+function resetGame(){
+ localStorage.clear();
+ alert("Data dihapus!");
+}
+
+// ===== SAVE =====
+function saveGame(){
+ localStorage.setItem("rpgSave", JSON.stringify({p,m}));
+}
+
+// ===== DRAW =====
+function draw(){
+ ctx.clearRect(0,0,320,320);
+
+ let camX = p.x*size - 160;
+ let camY = p.y*size - 160;
+
+ for(let y=0;y<20;y++){
+  for(let x=0;x<20;x++){
+   let dx=x*size-camX;
+   let dy=y*size-camY;
+
+   ctx.fillStyle = map[y][x]==1 ? "#555":"#222";
+   ctx.fillRect(dx,dy,size,size);
+  }
+ }
+
+ // player
+ ctx.fillStyle="cyan";
+ ctx.fillRect(160-8,160-8,16,16);
+
+ // monster
+ ctx.fillStyle="red";
+ ctx.fillRect(m.x*size-camX+8,m.y*size-camY+8,16,16);
+
+ updateUI();
+
+ if(p.x===m.x && p.y===m.y) startBattle();
+
+ requestAnimationFrame(draw);
+}
+
+// ===== MOVE =====
+function move(dx,dy){
+ if(battle) return;
+
+ let nx = p.x + dx;
+ let ny = p.y + dy;
+
+ if(map[ny] && map[ny][nx] !== 1){
+  p.x = nx;
+  p.y = ny;
+  saveGame();
+ }
+}
+
+// ===== SOAL =====
+function genQ(){
+ let t = Math.floor(Math.random()*5);
+
+ if(t===0){
+  let a=Math.floor(Math.random()*20);
+  let b=Math.floor(Math.random()*20);
+  correct=(a+b).toString();
+  return `${a}+${b}=?`;
+ }
+ if(t===1){ correct="go"; return "Inggris 'pergi'?"; }
+ if(t===2){ correct="fotosintesis"; return "Proses tumbuhan?"; }
+ if(t===3){ correct="1945"; return "Tahun merdeka?"; }
+ correct="asia"; return "Benua terbesar?";
+}
+
+// ===== BATTLE =====
+function startBattle(){
+ battle=true;
+ document.getElementById("battleUI").style.display="block";
+ document.getElementById("q").innerText=genQ();
+}
+
+function attack(){
+ let a=document.getElementById("ans").value.toLowerCase();
+
+ if(a===correct){
+  let dmg = Math.random()<0.2 ? 20 : 10;
+  m.hp -= dmg;
+  document.getElementById("log").innerText="🔥 Hit!";
+ } else {
+  p.hp -= 10;
+  document.getElementById("log").innerText="❌ Salah!";
+ }
+
+ afterTurn();
+}
+
+function heal(){
+ p.hp += 15;
+ afterTurn();
+}
+
+function usePotion(){
+ if(p.potion>0){
+  p.hp += 25;
+  p.potion--;
+ }
+ afterTurn();
+}
+
+function afterTurn(){
+ updateUI();
+
+ if(m.hp <= 0){
+  p.exp += 10;
+  if(p.exp >= 20){
+   p.lv++;
+   p.exp = 0;
+   p.hp += 20;
+   p.potion++;
+  }
+
+  m.lv++;
+  m.hp = 20 + m.lv*5;
+  m.x = Math.floor(Math.random()*18)+1;
+  m.y = Math.floor(Math.random()*18)+1;
+
+  saveGame();
+  setTimeout(endBattle,800);
+ }
+
+ if(p.hp <= 0){
+  alert("Game Over");
+  location.reload();
+ }
+
+ document.getElementById("q").innerText = genQ();
+}
+
+function updateUI(){
+ document.getElementById("hp").innerText = p.hp;
+ document.getElementById("lv").innerText = p.lv;
+ document.getElementById("pot").innerText = p.potion;
+ document.getElementById("mName").innerText = "👾 LV " + m.lv;
+ document.getElementById("mHP").innerText = m.hp;
+}
+
+function endBattle(){
+ battle=false;
+ document.getElementById("battleUI").style.display="none";
+}
+</script>
+
+</body>
+                               </html>
